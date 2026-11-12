@@ -92,3 +92,4 @@ server.listen(PORT, HOST, () => {
   console.log(`- Static directory: ${DIST_DIR}`);
   console.log(`- Health check: http://${HOST}:${PORT}/healthz`);
 });
+

@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
-  Package,
   FileSpreadsheet,
   PlusCircle,
   BookOpen,
@@ -13,6 +12,7 @@ import {
   Clock,
   X
 } from 'lucide-react';
+import scentpackLogo from '../assets/logo.png';
 import { MonthPeriod, INDONESIAN_MONTHS, getMonthInfo } from '../types/fulfillment';
 
 export interface HeaderProps {
@@ -90,9 +90,11 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Brand & Context */}
           <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 rounded-lg bg-emerald-800 text-white flex items-center justify-center font-bold shadow-sm ring-1 ring-emerald-900/20 shrink-0">
-              <Package className="w-5 h-5" />
-            </div>
+            <img
+              src={scentpackLogo}
+              alt="ScentPack Logo"
+              className="h-10 w-10 rounded-lg object-contain shadow-xs shrink-0"
+            />
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-lg font-semibold text-zinc-900 tracking-tight">

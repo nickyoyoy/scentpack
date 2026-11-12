@@ -79,3 +79,4 @@ Dashboard ScentPack sekarang sudah live dan dapat diakses 24/7 di:
   npm run build
   pm2 restart scentpack
   ```
+
