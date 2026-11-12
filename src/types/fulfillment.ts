@@ -1,4 +1,4 @@
-// TypeScript Type Definitions for ScentPack (SCENTPLUS ERP Fulfillment & Ekspedisi)
+// TypeScript Type Definitions for ScentPack (SCENTPLUS Fulfillment & Ekspedisi)
 // Aligned with SCENTPLUS Next.js 16 + Drizzle ORM + Supabase architecture
 
 export interface MonthPeriod {

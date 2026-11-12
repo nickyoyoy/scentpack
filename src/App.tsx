@@ -696,7 +696,7 @@ export const App: React.FC = () => {
 
       {/* 4. Subtle Footer */}
       <footer className="border-t border-zinc-200 bg-white py-4 mt-12 text-center text-xs text-zinc-400">
-        <p>ScentPack • SCENTPLUS ERP Fulfillment & Ekspedisi Analytics • Multi-Bulan & Multi-Tahun</p>
+        <p>ScentPack • SCENTPLUS Fulfillment & Ekspedisi Analytics • Multi-Bulan & Multi-Tahun</p>
       </footer>
 
       {/* Toast Notification */}

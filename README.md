@@ -1,6 +1,6 @@
-# ScentPack - Modul Fulfillment & Ekspedisi (SCENTPLUS ERP)
+# ScentPack - Modul Fulfillment & Ekspedisi (SCENTPLUS)
 
-Modul analitik dan rekonsiliasi pengiriman harian (18 Kurir Ekspedisi) dan beban kerja tim packing (5 Staff Fulfillment) untuk sistem internal **ERP SCENTPLUS**.
+Aplikasi analitik dan rekonsiliasi pengiriman harian (18 Kurir Ekspedisi + Kurir Lainnya) dan beban kerja tim packing (5 Staff Fulfillment) untuk **SCENTPLUS**.
 
 ---
 
