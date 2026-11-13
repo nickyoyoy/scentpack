@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   COURIERS_LIST, 
   getStaffListForPeriod,
@@ -19,6 +19,15 @@ import {
   getPeriodKey, 
   getMonthInfo 
 } from './types/fulfillment';
+import { isSupabaseConfigured } from './lib/supabase';
+import {
+  fetchAllPeriodsFromCloud,
+  upsertPeriodToCloud,
+  upsertManyPeriodsToCloud,
+  deletePeriodFromCloud,
+  clearAllPeriodsFromCloud,
+  subscribeToPeriodsCloud,
+} from './services/fulfillmentStorage';
 import { Header } from './components/Header';
 import { Navigation } from './components/Navigation';
 import { KpiMetrics } from './components/KpiMetrics';
@@ -102,11 +111,90 @@ export const App: React.FC = () => {
   const [isSopModalOpen, setIsSopModalOpen] = useState<boolean>(false);
   const [isClearModalOpen, setIsClearModalOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [cloudStatus, setCloudStatus] = useState<'local' | 'syncing' | 'synced' | 'error'>(
+    isSupabaseConfigured ? 'syncing' : 'local'
+  );
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
   };
+
+  // Helper: sync a single period row to Supabase Cloud
+  const syncPeriodToCloud = useCallback(async (key: string, expData: DailyRecord, stfData: DailyRecord) => {
+    if (!isSupabaseConfigured) return;
+    setCloudStatus('syncing');
+    const { error } = await upsertPeriodToCloud(key, expData, stfData);
+    setCloudStatus(error ? 'error' : 'synced');
+    if (error) console.error('[ScentPack Cloud Sync Error]:', error);
+  }, []);
+
+  // Load all periods from Supabase & subscribe to real-time updates
+  const loadFromCloud = useCallback(async (allowInitialSeed = false) => {
+    if (!isSupabaseConfigured) return;
+    const { rows, error } = await fetchAllPeriodsFromCloud();
+    if (error) {
+      console.error('[ScentPack Load Error]:', error);
+      setCloudStatus('error');
+      return;
+    }
+
+    if (rows.length === 0 && allowInitialSeed) {
+      // First-time cloud setup: seed October 2026 actual data + Nov/Dec placeholders
+      const seedEntries = [
+        {
+          periodKey: '2026-10',
+          expeditionData: SAMPLE_OCTOBER_EXPEDITION_DAILY,
+          staffData: SAMPLE_OCTOBER_STAFF_DAILY,
+        },
+        {
+          periodKey: '2026-11',
+          expeditionData: createEmptyDailyRecord(COURIERS_LIST, getDaysInMonth(2026, 11)),
+          staffData: createEmptyDailyRecord(getStaffListForPeriod({ year: 2026, month: 11 }), getDaysInMonth(2026, 11)),
+        },
+        {
+          periodKey: '2026-12',
+          expeditionData: createEmptyDailyRecord(COURIERS_LIST, getDaysInMonth(2026, 12)),
+          staffData: createEmptyDailyRecord(getStaffListForPeriod({ year: 2026, month: 12 }), getDaysInMonth(2026, 12)),
+        },
+      ];
+      await upsertManyPeriodsToCloud(seedEntries);
+      setCloudStatus('synced');
+      return;
+    }
+
+    if (rows.length > 0) {
+      const nextExp: Record<string, DailyRecord> = {};
+      const nextStaff: Record<string, DailyRecord> = {};
+      const nextKeys: string[] = [];
+
+      rows.forEach((row) => {
+        nextExp[row.period_key] = row.expedition_data || {};
+        nextStaff[row.period_key] = row.staff_data || {};
+        nextKeys.push(row.period_key);
+      });
+
+      setMultiExpedition(nextExp);
+      setMultiStaff(nextStaff);
+      setRegisteredPeriods((prev) => {
+        const merged = new Set(['2026-10', ...nextKeys, ...prev]);
+        return Array.from(merged);
+      });
+    }
+
+    setCloudStatus('synced');
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    loadFromCloud(true);
+    const unsubscribe = subscribeToPeriodsCloud(() => {
+      loadFromCloud(false);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [loadFromCloud]);
 
   // Derived current month info
   const periodKey = useMemo(() => {
@@ -252,8 +340,9 @@ export const App: React.FC = () => {
         ...prev,
         [periodKey]: newStaffDaily,
       }));
+      void syncPeriodToCloud(periodKey, expeditionDaily, newStaffDaily);
     }
-  }, [dailyTotals, multiStaff, periodKey, daysInMonth, selectedPeriod]);
+  }, [dailyTotals, expeditionDaily, multiStaff, periodKey, daysInMonth, selectedPeriod, syncPeriodToCloud]);
 
   // 3. Daily Average
   const dailyAvg = useMemo(() => {
@@ -344,18 +433,19 @@ export const App: React.FC = () => {
 
     const days = getDaysInMonth(newPeriod.year, newPeriod.month);
     const periodStaffList = getStaffListForPeriod(newPeriod);
-    setMultiExpedition(prev => {
-      if (!prev[key]) {
-        return { ...prev, [key]: createEmptyDailyRecord(COURIERS_LIST, days) };
-      }
-      return prev;
-    });
-    setMultiStaff(prev => {
-      if (!prev[key]) {
-        return { ...prev, [key]: createEmptyDailyRecord(periodStaffList, days) };
-      }
-      return prev;
-    });
+    const isNewPeriod = !multiExpedition[key] || !multiStaff[key];
+    const nextExp = multiExpedition[key] || createEmptyDailyRecord(COURIERS_LIST, days);
+    const nextStaff = multiStaff[key] || createEmptyDailyRecord(periodStaffList, days);
+
+    if (!multiExpedition[key]) {
+      setMultiExpedition(prev => ({ ...prev, [key]: nextExp }));
+    }
+    if (!multiStaff[key]) {
+      setMultiStaff(prev => ({ ...prev, [key]: nextStaff }));
+    }
+    if (isNewPeriod) {
+      void syncPeriodToCloud(key, nextExp, nextStaff);
+    }
 
     const m = getMonthInfo(newPeriod.month);
     showToast(`Beralih ke periode ${m.name} ${newPeriod.year} (${days} Hari).`);
@@ -384,6 +474,14 @@ export const App: React.FC = () => {
     if (selectedPeriod.year === p.year && selectedPeriod.month === p.month) {
       setSelectedPeriod({ year: 2026, month: 10 });
     }
+
+    void (async () => {
+      if (!isSupabaseConfigured) return;
+      setCloudStatus('syncing');
+      const { error } = await deletePeriodFromCloud(key);
+      setCloudStatus(error ? 'error' : 'synced');
+    })();
+
     showToast(`Periode ${getMonthInfo(p.month).name} ${p.year} berhasil dihapus dari daftar.`);
   };
 
@@ -391,27 +489,25 @@ export const App: React.FC = () => {
   const handleSaveDailyInput = (entry: DataEntryPayload) => {
     const dayIdx = entry.day - 1;
 
-    setMultiExpedition(prev => {
-      const current = prev[periodKey] || createEmptyDailyRecord(COURIERS_LIST, daysInMonth);
-      const next = { ...current };
-      Object.entries(entry.couriers).forEach(([cId, val]) => {
-        if (!next[cId]) next[cId] = new Array(daysInMonth).fill(0);
-        next[cId] = [...next[cId]];
-        next[cId][dayIdx] = Number(val);
-      });
-      return { ...prev, [periodKey]: next };
+    const currentExp = multiExpedition[periodKey] || createEmptyDailyRecord(COURIERS_LIST, daysInMonth);
+    const nextExp: DailyRecord = { ...currentExp };
+    Object.entries(entry.couriers).forEach(([cId, val]) => {
+      if (!nextExp[cId]) nextExp[cId] = new Array(daysInMonth).fill(0);
+      nextExp[cId] = [...nextExp[cId]];
+      nextExp[cId][dayIdx] = Number(val);
     });
+    setMultiExpedition(prev => ({ ...prev, [periodKey]: nextExp }));
 
-    setMultiStaff(prev => {
-      const current = prev[periodKey] || createEmptyDailyRecord(activeStaffList, daysInMonth);
-      const next = { ...current };
-      Object.entries(entry.staff).forEach(([sId, val]) => {
-        if (!next[sId]) next[sId] = new Array(daysInMonth).fill(0);
-        next[sId] = [...next[sId]];
-        next[sId][dayIdx] = Number(val);
-      });
-      return { ...prev, [periodKey]: next };
+    const currentStaff = multiStaff[periodKey] || createEmptyDailyRecord(activeStaffList, daysInMonth);
+    const nextStaff: DailyRecord = { ...currentStaff };
+    Object.entries(entry.staff).forEach(([sId, val]) => {
+      if (!nextStaff[sId]) nextStaff[sId] = new Array(daysInMonth).fill(0);
+      nextStaff[sId] = [...nextStaff[sId]];
+      nextStaff[sId][dayIdx] = Number(val);
     });
+    setMultiStaff(prev => ({ ...prev, [periodKey]: nextStaff }));
+
+    void syncPeriodToCloud(periodKey, nextExp, nextStaff);
 
     showToast(`Data Tanggal ${entry.day} ${currentMonthInfo.name} ${selectedPeriod.year} berhasil disimpan & disinkronkan!`);
   };
@@ -435,37 +531,35 @@ export const App: React.FC = () => {
     if (parsedResult.type === 'RAW_SCAN_LOG') {
       const days = parsedResult.detectedDays;
 
-      setMultiExpedition(prev => {
-        const current = prev[targetPeriodKey] || createEmptyDailyRecord(COURIERS_LIST, targetDaysInMonth);
-        const next = { ...current };
-        COURIERS_LIST.forEach((c) => {
-          if (!next[c.id]) next[c.id] = new Array(targetDaysInMonth).fill(0);
-          next[c.id] = [...next[c.id]];
-          days.forEach(day => {
-            const dayIdx = day - 1;
-            if (dayIdx < targetDaysInMonth) {
-              next[c.id][dayIdx] = parsedResult.expeditionMatrix[c.id]?.[dayIdx] || 0;
-            }
-          });
+      const currentExp = multiExpedition[targetPeriodKey] || createEmptyDailyRecord(COURIERS_LIST, targetDaysInMonth);
+      const nextExp: DailyRecord = { ...currentExp };
+      COURIERS_LIST.forEach((c) => {
+        if (!nextExp[c.id]) nextExp[c.id] = new Array(targetDaysInMonth).fill(0);
+        nextExp[c.id] = [...nextExp[c.id]];
+        days.forEach(day => {
+          const dayIdx = day - 1;
+          if (dayIdx < targetDaysInMonth) {
+            nextExp[c.id][dayIdx] = parsedResult.expeditionMatrix[c.id]?.[dayIdx] || 0;
+          }
         });
-        return { ...prev, [targetPeriodKey]: next };
       });
+      setMultiExpedition(prev => ({ ...prev, [targetPeriodKey]: nextExp }));
 
-      setMultiStaff(prev => {
-        const current = prev[targetPeriodKey] || createEmptyDailyRecord(targetStaffList, targetDaysInMonth);
-        const next = { ...current };
-        targetStaffList.forEach((s) => {
-          if (!next[s.id]) next[s.id] = new Array(targetDaysInMonth).fill(0);
-          next[s.id] = [...next[s.id]];
-          days.forEach(day => {
-            const dayIdx = day - 1;
-            if (dayIdx < targetDaysInMonth) {
-              next[s.id][dayIdx] = parsedResult.staffMatrix[s.id]?.[dayIdx] || 0;
-            }
-          });
+      const currentStaff = multiStaff[targetPeriodKey] || createEmptyDailyRecord(targetStaffList, targetDaysInMonth);
+      const nextStaff: DailyRecord = { ...currentStaff };
+      targetStaffList.forEach((s) => {
+        if (!nextStaff[s.id]) nextStaff[s.id] = new Array(targetDaysInMonth).fill(0);
+        nextStaff[s.id] = [...nextStaff[s.id]];
+        days.forEach(day => {
+          const dayIdx = day - 1;
+          if (dayIdx < targetDaysInMonth) {
+            nextStaff[s.id][dayIdx] = parsedResult.staffMatrix[s.id]?.[dayIdx] || 0;
+          }
         });
-        return { ...prev, [targetPeriodKey]: next };
       });
+      setMultiStaff(prev => ({ ...prev, [targetPeriodKey]: nextStaff }));
+
+      void syncPeriodToCloud(targetPeriodKey, nextExp, nextStaff);
 
       // Switch to that period if different from current
       if (targetYear !== selectedPeriod.year || targetMonth !== selectedPeriod.month) {
@@ -479,39 +573,39 @@ export const App: React.FC = () => {
         ? parsedResult.detectedDayIndices
         : Array.from({ length: targetDaysInMonth }, (_, i) => i);
 
+      let nextExp = multiExpedition[targetPeriodKey] || createEmptyDailyRecord(COURIERS_LIST, targetDaysInMonth);
       if (parsedResult.expeditionMatrix && Object.keys(parsedResult.expeditionMatrix).length > 0) {
-        setMultiExpedition(prev => {
-          const current = prev[targetPeriodKey] || createEmptyDailyRecord(COURIERS_LIST, targetDaysInMonth);
-          const next = { ...current };
-          Object.entries(parsedResult.expeditionMatrix!).forEach(([cId, newDailyArr]) => {
-            if (!next[cId]) next[cId] = new Array(targetDaysInMonth).fill(0);
-            next[cId] = [...next[cId]];
-            targetDays.forEach(dayIdx => {
-              if (dayIdx < targetDaysInMonth) {
-                next[cId][dayIdx] = newDailyArr[dayIdx] || 0;
-              }
-            });
+        const updatedExp: DailyRecord = { ...nextExp };
+        Object.entries(parsedResult.expeditionMatrix).forEach(([cId, newDailyArr]) => {
+          if (!updatedExp[cId]) updatedExp[cId] = new Array(targetDaysInMonth).fill(0);
+          updatedExp[cId] = [...updatedExp[cId]];
+          targetDays.forEach(dayIdx => {
+            if (dayIdx < targetDaysInMonth) {
+              updatedExp[cId][dayIdx] = newDailyArr[dayIdx] || 0;
+            }
           });
-          return { ...prev, [targetPeriodKey]: next };
         });
+        nextExp = updatedExp;
+        setMultiExpedition(prev => ({ ...prev, [targetPeriodKey]: nextExp }));
       }
 
+      let nextStaff = multiStaff[targetPeriodKey] || createEmptyDailyRecord(targetStaffList, targetDaysInMonth);
       if (parsedResult.staffMatrix && Object.keys(parsedResult.staffMatrix).length > 0) {
-        setMultiStaff(prev => {
-          const current = prev[targetPeriodKey] || createEmptyDailyRecord(targetStaffList, targetDaysInMonth);
-          const next = { ...current };
-          Object.entries(parsedResult.staffMatrix!).forEach(([sId, newDailyArr]) => {
-            if (!next[sId]) next[sId] = new Array(targetDaysInMonth).fill(0);
-            next[sId] = [...next[sId]];
-            targetDays.forEach(dayIdx => {
-              if (dayIdx < targetDaysInMonth) {
-                next[sId][dayIdx] = newDailyArr[dayIdx] || 0;
-              }
-            });
+        const updatedStaff: DailyRecord = { ...nextStaff };
+        Object.entries(parsedResult.staffMatrix).forEach(([sId, newDailyArr]) => {
+          if (!updatedStaff[sId]) updatedStaff[sId] = new Array(targetDaysInMonth).fill(0);
+          updatedStaff[sId] = [...updatedStaff[sId]];
+          targetDays.forEach(dayIdx => {
+            if (dayIdx < targetDaysInMonth) {
+              updatedStaff[sId][dayIdx] = newDailyArr[dayIdx] || 0;
+            }
           });
-          return { ...prev, [targetPeriodKey]: next };
         });
+        nextStaff = updatedStaff;
+        setMultiStaff(prev => ({ ...prev, [targetPeriodKey]: nextStaff }));
       }
+
+      void syncPeriodToCloud(targetPeriodKey, nextExp, nextStaff);
 
       if (targetYear !== selectedPeriod.year || targetMonth !== selectedPeriod.month) {
         setSelectedPeriod({ year: targetYear, month: targetMonth });
@@ -551,15 +645,28 @@ export const App: React.FC = () => {
 
   // Clear Data Handler (Options: Only active month vs All periods)
   const handleConfirmClear = (clearOnlyCurrentMonth: boolean) => {
+    const emptyExp = createEmptyDailyRecord(COURIERS_LIST, daysInMonth);
+    const emptyStaff = createEmptyDailyRecord(activeStaffList, daysInMonth);
+
     if (clearOnlyCurrentMonth) {
-      const emptyExp = createEmptyDailyRecord(COURIERS_LIST, daysInMonth);
-      const emptyStaff = createEmptyDailyRecord(activeStaffList, daysInMonth);
       setMultiExpedition(prev => ({ ...prev, [periodKey]: emptyExp }));
       setMultiStaff(prev => ({ ...prev, [periodKey]: emptyStaff }));
+      void syncPeriodToCloud(periodKey, emptyExp, emptyStaff);
       showToast(`Data ${currentMonthInfo.name} ${selectedPeriod.year} berhasil dikosongkan (0). Data bulan lain tetap aman tersimpan.`);
     } else {
-      setMultiExpedition({ [periodKey]: createEmptyDailyRecord(COURIERS_LIST, daysInMonth) });
-      setMultiStaff({ [periodKey]: createEmptyDailyRecord(activeStaffList, daysInMonth) });
+      setMultiExpedition({ [periodKey]: emptyExp });
+      setMultiStaff({ [periodKey]: emptyStaff });
+      void (async () => {
+        if (!isSupabaseConfigured) return;
+        setCloudStatus('syncing');
+        const { error: clearErr } = await clearAllPeriodsFromCloud();
+        if (clearErr) {
+          setCloudStatus('error');
+          return;
+        }
+        const { error: upErr } = await upsertPeriodToCloud(periodKey, emptyExp, emptyStaff);
+        setCloudStatus(upErr ? 'error' : 'synced');
+      })();
       showToast("Seluruh data dari seluruh periode berhasil dikosongkan.");
     }
   };
@@ -569,6 +676,21 @@ export const App: React.FC = () => {
     setSelectedPeriod({ year: 2026, month: 10 });
     setMultiExpedition(INITIAL_MULTI_EXPEDITION);
     setMultiStaff(INITIAL_MULTI_STAFF);
+    const restoreKeys = Object.keys(INITIAL_MULTI_EXPEDITION);
+    setRegisteredPeriods(restoreKeys);
+
+    void (async () => {
+      if (!isSupabaseConfigured) return;
+      setCloudStatus('syncing');
+      const entries = restoreKeys.map((k) => ({
+        periodKey: k,
+        expeditionData: INITIAL_MULTI_EXPEDITION[k] || {},
+        staffData: INITIAL_MULTI_STAFF[k] || {},
+      }));
+      const { error } = await upsertManyPeriodsToCloud(entries);
+      setCloudStatus(error ? 'error' : 'synced');
+    })();
+
     showToast("Data contoh (Oktober 2026) berhasil dipulihkan.");
   };
 
@@ -592,6 +714,7 @@ export const App: React.FC = () => {
       ...prev,
       [periodKey]: newStaffDaily,
     }));
+    void syncPeriodToCloud(periodKey, expeditionDaily, newStaffDaily);
 
     showToast(`Berhasil mendistribusikan ${totalVolume.toLocaleString('id-ID')} paket ke ${countCore} Staff Inti sesuai SOP (${currentMonthInfo.name} ${selectedPeriod.year})!`);
   };
@@ -612,6 +735,7 @@ export const App: React.FC = () => {
         onRemovePeriod={handleRemovePeriod}
         availablePeriods={availablePeriods}
         daysInMonth={daysInMonth}
+        cloudStatus={cloudStatus}
       />
 
       {/* 2. Navigation */}

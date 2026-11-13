@@ -10,7 +10,9 @@ import {
   Plus,
   Check,
   Clock,
-  X
+  X,
+  Cloud,
+  RefreshCw
 } from 'lucide-react';
 import scentpackLogo from '../assets/logo.png';
 import { MonthPeriod, INDONESIAN_MONTHS, getMonthInfo } from '../types/fulfillment';
@@ -27,6 +29,7 @@ export interface HeaderProps {
   onRemovePeriod?: (period: MonthPeriod) => void;
   availablePeriods: MonthPeriod[];
   daysInMonth: number;
+  cloudStatus?: 'local' | 'syncing' | 'synced' | 'error';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -41,6 +44,7 @@ export const Header: React.FC<HeaderProps> = ({
   onRemovePeriod,
   availablePeriods,
   daysInMonth,
+  cloudStatus = 'local',
 }) => {
   const [isPeriodMenuOpen, setIsPeriodMenuOpen] = useState<boolean>(false);
   const [pickerMonth, setPickerMonth] = useState<number>(selectedPeriod.month);
@@ -230,9 +234,31 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
               </div>
 
-              <p className="text-xs text-zinc-500 flex items-center gap-1 mt-0.5">
-                <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-                Periode: 1 - {daysInMonth} {currentMonthInfo.name} {selectedPeriod.year} (Rekap Bulanan) • <strong className="text-zinc-800 font-semibold">{totalVolume.toLocaleString('id-ID')} Total Paket</strong>
+              <p className="text-xs text-zinc-500 flex items-center gap-1.5 flex-wrap mt-0.5">
+                <Calendar className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                <span>Periode: 1 - {daysInMonth} {currentMonthInfo.name} {selectedPeriod.year} (Rekap Bulanan) • <strong className="text-zinc-800 font-semibold">{totalVolume.toLocaleString('id-ID')} Total Paket</strong></span>
+                <span className="text-zinc-300">•</span>
+                {cloudStatus === 'synced' ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700" title="Data tersimpan & sinkron otomatis di Server Supabase">
+                    <Cloud className="w-3 h-3" />
+                    <span>Cloud Sync</span>
+                  </span>
+                ) : cloudStatus === 'syncing' ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700" title="Menyimpan ke Server Supabase...">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    <span>Syncing...</span>
+                  </span>
+                ) : cloudStatus === 'error' ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-600" title="Koneksi Supabase bermasalah, tersimpan di browser sementara">
+                    <Cloud className="w-3 h-3" />
+                    <span>Sync Offline</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-zinc-400" title="Database Cloud belum dihubungkan (tersimpan di memori browser)">
+                    <Cloud className="w-3 h-3" />
+                    <span>Lokal</span>
+                  </span>
+                )}
               </p>
             </div>
           </div>
