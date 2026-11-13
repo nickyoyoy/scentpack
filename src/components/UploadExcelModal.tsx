@@ -13,7 +13,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { COURIERS_LIST, STAFF_LIST } from '../data/initialData';
+import { COURIERS_LIST, getStaffListForPeriod, getCoreStaffIdsForPeriod, isNov2026OrLater } from '../data/initialData';
 import { MonthPeriod, getDaysInMonth, getMonthInfo } from '../types/fulfillment';
 
 export interface ScanLogDaySummary {
@@ -109,15 +109,18 @@ export const UploadExcelModal: React.FC<UploadExcelModalProps> = ({
     return null;
   };
 
-  // Normalize staff id helper
+  // Normalize staff id helper (supports both <= Oct 2026 & >= Nov 2026 staff)
   const mapStaffId = (cellValue: unknown): string | null => {
     if (!cellValue) return null;
     const clean = String(cellValue).toLowerCase().trim();
+    if (clean.includes('bagir')) return 'bagir';
     if (clean.includes('dina')) return 'dina';
+    if (clean.includes('dodi')) return 'dodi';
     if (clean.includes('hambali')) return 'hambali';
     if (clean.includes('jihan')) return 'jihan';
     if (clean.includes('wawan')) return 'wawan';
     if (clean.includes('windi')) return 'windi';
+    if (clean.includes('wirid')) return 'wirid';
     return null;
   };
 
@@ -357,10 +360,14 @@ export const UploadExcelModal: React.FC<UploadExcelModalProps> = ({
               const staffCell = idxStaff !== -1 ? row[idxStaff] : null;
               const staffMembers = parseStaffFromCell(staffCell);
 
-              // Default if staff cell was empty: 4 core staff
+              // Default if staff cell was empty: dynamic core staff based on date's month/year
+              const rowPeriod = {
+                year: parsedDate?.year || currentPeriod.year,
+                month: parsedDate?.month || currentPeriod.month
+              };
               const resolvedMembers = staffMembers.length > 0 
                 ? staffMembers 
-                : ['dina', 'jihan', 'wawan', 'windi'];
+                : getCoreStaffIdsForPeriod(rowPeriod);
 
               const staffKey = resolvedMembers.slice().sort().join(',');
               if (!dayStaffGroups[dayIdx]) dayStaffGroups[dayIdx] = {};
@@ -480,8 +487,9 @@ export const UploadExcelModal: React.FC<UploadExcelModalProps> = ({
             expeditionMatrix[c.id] = new Array(daysCount).fill(0);
           });
 
+          const activeStaffList = getStaffListForPeriod({ year: activeYear, month: activeMonth });
           const staffMatrix: Record<string, number[]> = {};
-          STAFF_LIST.forEach(s => {
+          activeStaffList.forEach(s => {
             staffMatrix[s.id] = new Array(daysCount).fill(0);
           });
 
@@ -573,19 +581,20 @@ export const UploadExcelModal: React.FC<UploadExcelModalProps> = ({
             calculatedTotal = expTotals.reduce((a, b) => a + b, 0);
 
             if (!hasMatrixStaff) {
-              autoStaff = {
-                dina: new Array(daysCount).fill(0),
-                jihan: new Array(daysCount).fill(0),
-                wawan: new Array(daysCount).fill(0),
-                windi: new Array(daysCount).fill(0),
-                hambali: new Array(daysCount).fill(0),
-              };
+              const targetPeriod = { year: activeYear, month: activeMonth };
+              const periodStaffList = getStaffListForPeriod(targetPeriod);
+              const coreStaffIds = getCoreStaffIdsForPeriod(targetPeriod);
+              const countCore = coreStaffIds.length;
 
-              const coreStaffIds = ['dina', 'jihan', 'wawan', 'windi'];
+              autoStaff = {};
+              periodStaffList.forEach(s => {
+                autoStaff![s.id] = new Array(daysCount).fill(0);
+              });
+
               expTotals.forEach((dayTotal, dayIdx) => {
-                if (dayTotal > 0 && dayIdx < daysCount) {
-                  const q = Math.floor(dayTotal / 4);
-                  const r = dayTotal % 4;
+                if (dayTotal > 0 && dayIdx < daysCount && countCore > 0) {
+                  const q = Math.floor(dayTotal / countCore);
+                  const r = dayTotal % countCore;
                   coreStaffIds.forEach((sId, sIdx) => {
                     autoStaff![sId][dayIdx] = q + (sIdx < r ? 1 : 0);
                   });
@@ -884,7 +893,12 @@ export const UploadExcelModal: React.FC<UploadExcelModalProps> = ({
                 <div>Staff di File: <strong className="text-zinc-900">{previewData.hasStaff ? `${previewData.staffCount} staff` : 'Tidak Ada di File'}</strong></div>
               </div>
 
-              {!previewData.hasStaff && previewData.autoStaffMatrix && (
+              {!previewData.hasStaff && previewData.autoStaffMatrix && (() => {
+                const previewIsNov = isNov2026OrLater({
+                  year: previewData.detectedYear || currentPeriod.year,
+                  month: previewData.detectedMonth || currentPeriod.month
+                });
+                return (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
                   <div className="flex items-start gap-2">
                     <input
@@ -895,14 +909,19 @@ export const UploadExcelModal: React.FC<UploadExcelModalProps> = ({
                       className="mt-0.5 rounded border-amber-400 text-emerald-800 focus:ring-emerald-700 cursor-pointer"
                     />
                     <label htmlFor="auto-distribute" className="text-amber-950 font-semibold cursor-pointer">
-                      Otomatis bagi rata kuota harian ke 4 Staff Inti sesuai SOP?
+                      Otomatis bagi rata kuota harian ke {previewIsNov ? '7' : '4'} Staff Inti sesuai SOP?
                     </label>
                   </div>
                   <p className="text-[11px] text-amber-800 pl-5 leading-relaxed">
-                    Karena file ini hanya berisi tabel Ekspedisi ({previewData.calculatedTotal.toLocaleString('id-ID')} paket), sistem akan membagi adil total harian kepada <strong>Dina, Jihan, Wawan, dan Windi</strong> (Hambali 0 / Standby Leader). Tab Produktivitas Staff akan langsung aktif dan 100% klop!
+                    {previewIsNov ? (
+                      <>Karena file ini hanya berisi tabel Ekspedisi ({previewData.calculatedTotal.toLocaleString('id-ID')} paket), sistem akan membagi adil total harian kepada <strong>Bagir, Dina, Dodi, Hambali (Team Leader), Wawan, Windi, dan Wirid</strong>. Tab Produktivitas Staff akan langsung aktif dan 100% klop!</>
+                    ) : (
+                      <>Karena file ini hanya berisi tabel Ekspedisi ({previewData.calculatedTotal.toLocaleString('id-ID')} paket), sistem akan membagi adil total harian kepada <strong>Dina, Jihan, Wawan, dan Windi</strong> (Hambali 0 / Standby Leader). Tab Produktivitas Staff akan langsung aktif dan 100% klop!</>
+                    )}
                   </p>
                 </div>
-              )}
+                );
+              })()}
             </div>
           )}
 

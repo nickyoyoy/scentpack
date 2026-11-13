@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   COURIERS_LIST, 
-  STAFF_LIST, 
+  getStaffListForPeriod,
+  getCoreStaffIdsForPeriod,
+  isNov2026OrLater,
   INITIAL_MULTI_EXPEDITION,
   INITIAL_MULTI_STAFF,
   SAMPLE_OCTOBER_EXPEDITION_DAILY,
@@ -167,11 +169,14 @@ export const App: React.FC = () => {
     return res;
   }, [multiExpedition, periodKey, daysInMonth]);
 
+  // Active staff list dynamically resolved by period (<= Oct 2026: 5 staff, >= Nov 2026: 7 staff)
+  const activeStaffList = useMemo(() => getStaffListForPeriod(selectedPeriod), [selectedPeriod]);
+
   // Current active month's staff daily record
   const staffDaily = useMemo<DailyRecord>(() => {
     const raw = multiStaff[periodKey];
     const res: DailyRecord = {};
-    STAFF_LIST.forEach((s) => {
+    activeStaffList.forEach((s) => {
       const srcArr = (raw && raw[s.id]) || [];
       const newArr = new Array(daysInMonth).fill(0);
       for (let i = 0; i < daysInMonth; i++) {
@@ -180,7 +185,7 @@ export const App: React.FC = () => {
       res[s.id] = newArr;
     });
     return res;
-  }, [multiStaff, periodKey, daysInMonth]);
+  }, [multiStaff, periodKey, daysInMonth, activeStaffList]);
 
   // List of all available periods saved or standard default
   const availablePeriods = useMemo<MonthPeriod[]>(() => {
@@ -217,21 +222,22 @@ export const App: React.FC = () => {
     return dailyTotals.reduce((a, b) => a + b, 0);
   }, [dailyTotals]);
 
-  // Auto-sync: If a date in the active month has courier packages but staff is 0, distribute to 4 core staff per SOP
+  // Auto-sync: If a date in the active month has courier packages but staff is 0, distribute to core staff per SOP
   useEffect(() => {
     let needsUpdate = false;
     const currentStaffMap = multiStaff[periodKey] || {};
     const newStaffDaily: DailyRecord = { ...currentStaffMap };
-    const coreStaffIds = ['dina', 'jihan', 'wawan', 'windi'];
+    const coreStaffIds = getCoreStaffIdsForPeriod(selectedPeriod);
+    const countCore = coreStaffIds.length;
 
     for (let d = 0; d < daysInMonth; d++) {
       const dayExpTotal = dailyTotals[d] || 0;
       const dayStaffTotal = Object.values(currentStaffMap).reduce((acc, arr) => acc + Number((arr && arr[d]) || 0), 0);
 
-      if (dayExpTotal > 0 && dayStaffTotal === 0) {
+      if (dayExpTotal > 0 && dayStaffTotal === 0 && countCore > 0) {
         needsUpdate = true;
-        const q = Math.floor(dayExpTotal / 4);
-        const r = dayExpTotal % 4;
+        const q = Math.floor(dayExpTotal / countCore);
+        const r = dayExpTotal % countCore;
 
         coreStaffIds.forEach((sId, sIdx) => {
           if (!newStaffDaily[sId]) newStaffDaily[sId] = new Array(daysInMonth).fill(0);
@@ -247,7 +253,7 @@ export const App: React.FC = () => {
         [periodKey]: newStaffDaily,
       }));
     }
-  }, [dailyTotals, multiStaff, periodKey, daysInMonth]);
+  }, [dailyTotals, multiStaff, periodKey, daysInMonth, selectedPeriod]);
 
   // 3. Daily Average
   const dailyAvg = useMemo(() => {
@@ -269,7 +275,7 @@ export const App: React.FC = () => {
 
   // 5. Detailed Staff Data
   const staffData = useMemo(() => {
-    return STAFF_LIST.map((s) => {
+    return activeStaffList.map((s) => {
       const daily = staffDaily[s.id] || new Array(daysInMonth).fill(0);
       const total = daily.reduce((a, b) => a + b, 0);
       const daysActive = daily.filter(v => v > 0).length;
@@ -284,7 +290,7 @@ export const App: React.FC = () => {
         activeDailyAvg,
       };
     });
-  }, [staffDaily, daysInMonth]);
+  }, [staffDaily, daysInMonth, activeStaffList]);
 
   // 6. Top Courier
   const topCourier = useMemo(() => {
@@ -321,7 +327,7 @@ export const App: React.FC = () => {
 
   // 9. Leader Stats (Hambali)
   const leaderStats = useMemo(() => {
-    const lead = staffData.find(s => s.isLeadBackup) || { daysActive: 0, total: 0 };
+    const lead = staffData.find(s => s.id === 'hambali' || s.isLeadBackup) || { daysActive: 0, total: 0 };
     return { daysActive: lead.daysActive, total: lead.total };
   }, [staffData]);
 
@@ -337,6 +343,7 @@ export const App: React.FC = () => {
     });
 
     const days = getDaysInMonth(newPeriod.year, newPeriod.month);
+    const periodStaffList = getStaffListForPeriod(newPeriod);
     setMultiExpedition(prev => {
       if (!prev[key]) {
         return { ...prev, [key]: createEmptyDailyRecord(COURIERS_LIST, days) };
@@ -345,7 +352,7 @@ export const App: React.FC = () => {
     });
     setMultiStaff(prev => {
       if (!prev[key]) {
-        return { ...prev, [key]: createEmptyDailyRecord(STAFF_LIST, days) };
+        return { ...prev, [key]: createEmptyDailyRecord(periodStaffList, days) };
       }
       return prev;
     });
@@ -396,7 +403,7 @@ export const App: React.FC = () => {
     });
 
     setMultiStaff(prev => {
-      const current = prev[periodKey] || createEmptyDailyRecord(STAFF_LIST, daysInMonth);
+      const current = prev[periodKey] || createEmptyDailyRecord(activeStaffList, daysInMonth);
       const next = { ...current };
       Object.entries(entry.staff).forEach(([sId, val]) => {
         if (!next[sId]) next[sId] = new Array(daysInMonth).fill(0);
@@ -416,6 +423,7 @@ export const App: React.FC = () => {
     const targetPeriodKey = getPeriodKey(targetYear, targetMonth);
     const targetDaysInMonth = getDaysInMonth(targetYear, targetMonth);
     const targetMonthInfo = getMonthInfo(targetMonth);
+    const targetStaffList = getStaffListForPeriod({ year: targetYear, month: targetMonth });
 
     setRegisteredPeriods(prev => {
       if (!prev.includes(targetPeriodKey)) {
@@ -444,9 +452,9 @@ export const App: React.FC = () => {
       });
 
       setMultiStaff(prev => {
-        const current = prev[targetPeriodKey] || createEmptyDailyRecord(STAFF_LIST, targetDaysInMonth);
+        const current = prev[targetPeriodKey] || createEmptyDailyRecord(targetStaffList, targetDaysInMonth);
         const next = { ...current };
-        STAFF_LIST.forEach((s) => {
+        targetStaffList.forEach((s) => {
           if (!next[s.id]) next[s.id] = new Array(targetDaysInMonth).fill(0);
           next[s.id] = [...next[s.id]];
           days.forEach(day => {
@@ -490,7 +498,7 @@ export const App: React.FC = () => {
 
       if (parsedResult.staffMatrix && Object.keys(parsedResult.staffMatrix).length > 0) {
         setMultiStaff(prev => {
-          const current = prev[targetPeriodKey] || createEmptyDailyRecord(STAFF_LIST, targetDaysInMonth);
+          const current = prev[targetPeriodKey] || createEmptyDailyRecord(targetStaffList, targetDaysInMonth);
           const next = { ...current };
           Object.entries(parsedResult.staffMatrix!).forEach(([sId, newDailyArr]) => {
             if (!next[sId]) next[sId] = new Array(targetDaysInMonth).fill(0);
@@ -545,13 +553,13 @@ export const App: React.FC = () => {
   const handleConfirmClear = (clearOnlyCurrentMonth: boolean) => {
     if (clearOnlyCurrentMonth) {
       const emptyExp = createEmptyDailyRecord(COURIERS_LIST, daysInMonth);
-      const emptyStaff = createEmptyDailyRecord(STAFF_LIST, daysInMonth);
+      const emptyStaff = createEmptyDailyRecord(activeStaffList, daysInMonth);
       setMultiExpedition(prev => ({ ...prev, [periodKey]: emptyExp }));
       setMultiStaff(prev => ({ ...prev, [periodKey]: emptyStaff }));
       showToast(`Data ${currentMonthInfo.name} ${selectedPeriod.year} berhasil dikosongkan (0). Data bulan lain tetap aman tersimpan.`);
     } else {
       setMultiExpedition({ [periodKey]: createEmptyDailyRecord(COURIERS_LIST, daysInMonth) });
-      setMultiStaff({ [periodKey]: createEmptyDailyRecord(STAFF_LIST, daysInMonth) });
+      setMultiStaff({ [periodKey]: createEmptyDailyRecord(activeStaffList, daysInMonth) });
       showToast("Seluruh data dari seluruh periode berhasil dikosongkan.");
     }
   };
@@ -566,19 +574,14 @@ export const App: React.FC = () => {
 
   // Auto-distribute Staff Handler
   const handleAutoDistributeStaffFromExpedition = () => {
-    const newStaffDaily: DailyRecord = {
-      dina: new Array(daysInMonth).fill(0),
-      jihan: new Array(daysInMonth).fill(0),
-      wawan: new Array(daysInMonth).fill(0),
-      windi: new Array(daysInMonth).fill(0),
-      hambali: new Array(daysInMonth).fill(0),
-    };
+    const newStaffDaily: DailyRecord = createEmptyDailyRecord(activeStaffList, daysInMonth);
+    const coreStaffIds = getCoreStaffIdsForPeriod(selectedPeriod);
+    const countCore = coreStaffIds.length;
 
-    const coreStaffIds = ['dina', 'jihan', 'wawan', 'windi'];
     dailyTotals.forEach((dayTotal, dayIdx) => {
-      if (dayTotal > 0) {
-        const q = Math.floor(dayTotal / 4);
-        const r = dayTotal % 4;
+      if (dayTotal > 0 && countCore > 0) {
+        const q = Math.floor(dayTotal / countCore);
+        const r = dayTotal % countCore;
         coreStaffIds.forEach((sId, sIdx) => {
           newStaffDaily[sId][dayIdx] = q + (sIdx < r ? 1 : 0);
         });
@@ -590,7 +593,7 @@ export const App: React.FC = () => {
       [periodKey]: newStaffDaily,
     }));
 
-    showToast(`Berhasil mendistribusikan ${totalVolume.toLocaleString('id-ID')} paket ke 4 Staff Inti sesuai SOP (${currentMonthInfo.name} ${selectedPeriod.year})!`);
+    showToast(`Berhasil mendistribusikan ${totalVolume.toLocaleString('id-ID')} paket ke ${countCore} Staff Inti sesuai SOP (${currentMonthInfo.name} ${selectedPeriod.year})!`);
   };
 
   return (
@@ -630,6 +633,7 @@ export const App: React.FC = () => {
           peakDay={peakDay}
           leaderStats={leaderStats}
           daysInMonth={daysInMonth}
+          isNovOrLater={isNov2026OrLater(selectedPeriod)}
         />
 
         {/* Tab 1: Overview */}
@@ -709,11 +713,12 @@ export const App: React.FC = () => {
 
       {/* Modals */}
       <DataEntryModal
+        key={periodKey}
         isOpen={isInputModalOpen}
         onClose={() => setIsInputModalOpen(false)}
         onSave={handleSaveDailyInput}
         couriersList={COURIERS_LIST}
-        staffList={STAFF_LIST}
+        staffList={activeStaffList}
         currentPeriod={selectedPeriod}
         daysInMonth={daysInMonth}
         initialDay={1}

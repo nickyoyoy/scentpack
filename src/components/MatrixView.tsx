@@ -4,6 +4,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { MonthPeriod, getMonthInfo } from '../types/fulfillment';
+import { isNov2026OrLater } from '../data/initialData';
 
 export interface MatrixRowItem {
   id: string;
@@ -249,7 +250,7 @@ export const MatrixView: React.FC<MatrixViewProps> = ({
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-xs border border-amber-300 bg-amber-50"></span>
-          <span>Hambali (Team Leader / Cadangan)</span>
+          <span>{isNov2026OrLater(period) ? 'Hambali (Team Leader)' : 'Hambali (Team Leader / Cadangan)'}</span>
         </span>
       </div>
 

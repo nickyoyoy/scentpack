@@ -32,6 +32,7 @@ export interface KpiMetricsProps {
   peakDay: PeakDayProp;
   leaderStats: LeaderStatsProp;
   daysInMonth?: number;
+  isNovOrLater?: boolean;
 }
 
 export const KpiMetrics: React.FC<KpiMetricsProps> = ({ 
@@ -41,7 +42,8 @@ export const KpiMetrics: React.FC<KpiMetricsProps> = ({
   topStaff, 
   peakDay, 
   leaderStats,
-  daysInMonth = 31 
+  daysInMonth = 31,
+  isNovOrLater = false
 }) => {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
@@ -127,10 +129,12 @@ export const KpiMetrics: React.FC<KpiMetricsProps> = ({
         </p>
       </div>
 
-      {/* 6. Leader Backup Status */}
+      {/* 6. Leader Status */}
       <div className="bg-white rounded-lg border border-zinc-200/80 p-3.5 shadow-2xs hover:border-zinc-300 transition-colors">
         <div className="flex items-center justify-between text-zinc-500 mb-1">
-          <span className="text-xs font-medium text-zinc-500">Leader Backup</span>
+          <span className="text-xs font-medium text-zinc-500">
+            {isNovOrLater ? 'Team Leader' : 'Leader Backup'}
+          </span>
           <div className="p-1.5 rounded-md bg-zinc-100 text-zinc-700">
             <UserCheck className="w-3.5 h-3.5" />
           </div>
@@ -139,7 +143,7 @@ export const KpiMetrics: React.FC<KpiMetricsProps> = ({
           Hambali
         </div>
         <p className="text-[11px] text-zinc-500 mt-0.5">
-          {leaderStats.daysActive} hari backup ({leaderStats.total.toLocaleString('id-ID')} pkt)
+          {leaderStats.daysActive} hari {isNovOrLater ? 'aktif' : 'backup'} ({leaderStats.total.toLocaleString('id-ID')} pkt)
         </p>
       </div>
 

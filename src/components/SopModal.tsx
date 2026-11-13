@@ -96,10 +96,14 @@ export const SopContent: React.FC = () => {
             <strong>1. Ketentuan Status "0":</strong> Nilai 0 di lembar laporan otomatis dicatat sebagai <em>Off (Libur Shift Resmi / Cuti)</em>, bukan alfa atau pengurangan performa.
           </p>
           <p>
-            <strong>2. Peran Team Leader (Hambali):</strong> Hambali bertindak sebagai <em>Leader pengawas sekaligus Buffer Cadangan</em>. Pada kondisi normal (4 staff inti hadir), tugasnya fokus pada quality check, rekonsiliasi data, dan koordinasi dengan koordinator ekspedisi.
+            <strong>2. Peran Team Leader (Hambali):</strong>
           </p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li><strong>Periode Oktober 2026:</strong> Hambali bertindak sebagai <em>Leader pengawas sekaligus Buffer Cadangan</em> (4 Staff Inti: Dina, Jihan, Wawan, Windi).</li>
+            <li><strong>Mulai November 2026 &amp; Seterusnya:</strong> Tim packing bertambah menjadi <strong>7 Staff Inti</strong> (Bagir, Dina, Dodi, Hambali, Wawan, Windi, Wirid). Hambali tetap menjabat sebagai <strong>Team Leader</strong> sekaligus masuk sebagai <strong>Staff Inti reguler</strong> (bukan lagi cadangan/backup).</li>
+          </ul>
           <p>
-            <strong>3. Pemicu Turun Lapangan (Trigger Backup):</strong> Apabila terjadi salah satu kondisi berikut:
+            <strong>3. Pemicu Turun Lapangan / Penyesuaian Beban:</strong> Apabila terjadi kondisi berikut (khususnya saat mode backup atau lonjakan):
           </p>
           <ul className="list-disc pl-5 space-y-1">
             <li>Dua atau lebih staff inti sedang libur/off di hari yang sama.</li>

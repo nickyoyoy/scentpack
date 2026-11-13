@@ -171,21 +171,27 @@ export const DataEntryModal: React.FC<DataEntryModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                {staffList.map((s) => (
+                {staffList.map((s) => {
+                  const isLeader = s.id === 'hambali' || s.role.toLowerCase().includes('leader');
+                  return (
                   <div 
                     key={s.id} 
                     className={`flex items-center justify-between gap-3 text-xs p-2 rounded-lg border ${
-                      s.isLeadBackup ? 'bg-amber-50/50 border-amber-200' : 'bg-zinc-50/50 border-zinc-200'
+                      isLeader ? 'bg-amber-50/50 border-amber-200' : 'bg-zinc-50/50 border-zinc-200'
                     }`}
                   >
                     <div>
                       <div className="font-semibold text-zinc-900 flex items-center gap-1.5">
                         {s.name}
-                        {s.isLeadBackup && (
+                        {s.isLeadBackup ? (
                           <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-200 text-amber-900">
                             Leader / Backup
                           </span>
-                        )}
+                        ) : isLeader ? (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-200 text-amber-900">
+                            Team Leader
+                          </span>
+                        ) : null}
                       </div>
                       <span className="text-[10px] text-zinc-400">
                         {staffInputs[s.id] === 0 ? 'Isi 0 jika Libur / Off' : 'Jumlah paket dipacking'}
@@ -200,7 +206,8 @@ export const DataEntryModal: React.FC<DataEntryModalProps> = ({
                       className="w-24 text-right px-2.5 py-1 font-mono text-xs border border-zinc-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-700 focus:border-emerald-700 bg-white"
                     />
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="p-2.5 bg-zinc-100 rounded-lg text-[11px] text-zinc-600">

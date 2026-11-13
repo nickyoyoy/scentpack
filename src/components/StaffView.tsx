@@ -28,6 +28,7 @@ import {
 } from 'recharts';
 
 import { MonthPeriod, getMonthInfo } from '../types/fulfillment';
+import { isNov2026OrLater } from '../data/initialData';
 
 export interface StaffDisplayItem {
   id: string;
@@ -53,11 +54,14 @@ export interface StaffViewProps {
 type StaffChartMode = 'area' | 'bar' | 'compare';
 
 const STAFF_COLORS: Record<string, string> = {
+  bagir: '#0d9488',  // Teal
   dina: '#047857',   // Emerald
+  dodi: '#2563eb',   // Blue
   hambali: '#d97706',// Amber
   jihan: '#0284c7',  // Sky Blue
   wawan: '#7c3aed',  // Violet
   windi: '#db2777',  // Pink
+  wirid: '#4f46e5',  // Indigo
 };
 
 export const StaffView: React.FC<StaffViewProps> = ({ 
@@ -71,6 +75,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>('dina');
   const [chartMode, setChartMode] = useState<StaffChartMode>('area');
   const mInfo = getMonthInfo(period.month);
+  const isNovOrLater = isNov2026OrLater(period);
 
   // Filter staff based on toggle
   const displayedStaff = includeLeader
@@ -221,20 +226,27 @@ export const StaffView: React.FC<StaffViewProps> = ({
           </p>
         </div>
 
-        {/* Leader Toggle Switch */}
-        <div className="flex items-center gap-2.5 bg-zinc-100 p-1.5 rounded-lg border border-zinc-200 text-xs">
-          <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
-          <span className="text-zinc-700 font-medium">Sertakan Leader (Hambali):</span>
-          <button
-            onClick={() => setIncludeLeader(!includeLeader)}
-            className={`px-2.5 py-1 rounded font-medium transition-colors cursor-pointer ${includeLeader
-                ? 'bg-emerald-800 text-white shadow-2xs'
-                : 'bg-white text-zinc-700 border border-zinc-300'
-              }`}
-          >
-            {includeLeader ? 'Aktif (5 Orang)' : 'Hanya 4 Staff Inti'}
-          </button>
-        </div>
+        {/* Leader Toggle Switch (Only shown in backup mode <= Oct 2026) or Active Team Badge (>= Nov 2026) */}
+        {!isNovOrLater && leaderStaff ? (
+          <div className="flex items-center gap-2.5 bg-zinc-100 p-1.5 rounded-lg border border-zinc-200 text-xs">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
+            <span className="text-zinc-700 font-medium">Sertakan Leader (Hambali):</span>
+            <button
+              onClick={() => setIncludeLeader(!includeLeader)}
+              className={`px-2.5 py-1 rounded font-medium transition-colors cursor-pointer ${includeLeader
+                  ? 'bg-emerald-800 text-white shadow-2xs'
+                  : 'bg-white text-zinc-700 border border-zinc-300'
+                }`}
+            >
+              {includeLeader ? 'Aktif (5 Orang)' : 'Hanya 4 Staff Inti'}
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 bg-emerald-50 text-emerald-900 px-3 py-1.5 rounded-lg border border-emerald-200 text-xs font-medium">
+            <Users className="w-3.5 h-3.5 text-emerald-700" />
+            <span>{staffData.length} Staff Inti Aktif (Termasuk Team Leader)</span>
+          </div>
+        )}
       </div>
 
       {/* Smart Auto-Distribute Banner: When Ekspedisi has volume but Staff is empty */}
@@ -249,7 +261,9 @@ export const StaffView: React.FC<StaffViewProps> = ({
                 Data Ekspedisi ({totalVolume.toLocaleString('id-ID')} Paket) Terdeteksi, Tetapi Catatan Staff Masih 0
               </h4>
               <p className="text-xs text-emerald-800 mt-0.5 leading-relaxed">
-                File yang Anda upload berisi {totalVolume.toLocaleString('id-ID')} paket kurir, tetapi tidak menyertakan sheet Staff. Sesuai <strong>SOP 02</strong>, klik tombol di sebelah kanan untuk membagi rata kuota harian ke 4 Staff Inti (Dina, Jihan, Wawan, Windi).
+                {isNovOrLater
+                  ? `File yang Anda upload berisi ${totalVolume.toLocaleString('id-ID')} paket kurir, tetapi tidak menyertakan sheet Staff. Klik tombol di sebelah kanan untuk membagi rata kuota harian ke 7 Staff Inti (Bagir, Dina, Dodi, Hambali, Wawan, Windi, Wirid).`
+                  : `File yang Anda upload berisi ${totalVolume.toLocaleString('id-ID')} paket kurir, tetapi tidak menyertakan sheet Staff. Sesuai SOP 02, klik tombol di sebelah kanan untuk membagi rata kuota harian ke 4 Staff Inti (Dina, Jihan, Wawan, Windi).`}
               </p>
             </div>
           </div>
@@ -258,13 +272,13 @@ export const StaffView: React.FC<StaffViewProps> = ({
             className="px-4 py-2 bg-emerald-800 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg shadow-sm whitespace-nowrap shrink-0 transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>Distribusikan Beban ke 4 Staff (SOP)</span>
+            <span>Distribusikan Beban ke {isNovOrLater ? '7' : '4'} Staff (SOP)</span>
           </button>
         </div>
       )}
 
       {/* Leader & SOP Protocol Alert Note */}
-      {leaderStaff && (
+      {leaderStaff ? (
         <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-4 text-xs text-amber-900 flex items-start gap-3">
           <ShieldCheck className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
           <div className="space-y-1">
@@ -276,7 +290,19 @@ export const StaffView: React.FC<StaffViewProps> = ({
             </p>
           </div>
         </div>
-      )}
+      ) : isNovOrLater ? (
+        <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-4 text-xs text-amber-900 flex items-start gap-3">
+          <ShieldCheck className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="font-semibold text-amber-950 flex items-center gap-2">
+              Struktur Tim {mInfo.name} {period.year}: Team Leader (Hambali) Aktif sebagai Staff Inti
+            </div>
+            <p className="text-amber-800 leading-relaxed">
+              Mulai November 2026, tim packing terdiri dari <strong>7 Staff Inti</strong> (Bagir, Dina, Dodi, Hambali, Wawan, Windi, Wirid). <strong>Hambali</strong> tetap berperan sebagai <strong>Team Leader</strong> sekaligus ikut dalam pembagian beban kerja packing rutin harian (bukan lagi cadangan/backup).
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {/* Staff Selection Instructions */}
       <div className="flex items-center justify-between text-xs text-zinc-500 px-1">
@@ -290,10 +316,11 @@ export const StaffView: React.FC<StaffViewProps> = ({
       </div>
 
       {/* Staff Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 ${sortedStaff.length <= 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-4 xl:grid-cols-7'}`}>
         {sortedStaff.map((staff, rank) => {
           const share = activeTotalRef > 0 ? ((staff.total / activeTotalRef) * 100).toFixed(1) : '0.0';
           const isBackup = staff.isLeadBackup;
+          const isTeamLeader = staff.id === 'hambali' || staff.role.toLowerCase().includes('leader');
           const isSelected = selectedStaffId === staff.id;
 
           return (
@@ -302,7 +329,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
               onClick={() => setSelectedStaffId(staff.id)}
               className={`bg-white rounded-xl border p-3.5 shadow-2xs transition-all cursor-pointer relative ${isSelected
                   ? 'ring-2 ring-emerald-800 border-emerald-800 bg-emerald-50/20 shadow-xs'
-                  : isBackup
+                  : isTeamLeader
                     ? 'border-amber-200 bg-amber-50/20 hover:border-amber-300'
                     : 'border-zinc-200/90 hover:border-zinc-300'
                 }`}
@@ -315,7 +342,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
 
               <div className="flex items-start justify-between mb-2.5">
                 <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${isBackup ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${isTeamLeader ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
                     }`}>
                     {staff.avatar}
                   </div>
@@ -328,9 +355,9 @@ export const StaffView: React.FC<StaffViewProps> = ({
                         </span>
                       )}
                     </h3>
-                    <span className={`text-[9px] font-medium px-1 rounded inline-block ${isBackup ? 'bg-amber-200/70 text-amber-900' : 'bg-zinc-100 text-zinc-600'
+                    <span className={`text-[9px] font-medium px-1 rounded inline-block ${isTeamLeader ? 'bg-amber-200/70 text-amber-900' : 'bg-zinc-100 text-zinc-600'
                       }`}>
-                      {isBackup ? 'Leader/Backup' : 'Staff Inti'}
+                      {isBackup ? 'Leader/Backup' : isTeamLeader ? 'Team Leader' : 'Staff Inti'}
                     </span>
                   </div>
                 </div>
@@ -430,10 +457,10 @@ export const StaffView: React.FC<StaffViewProps> = ({
                     ? 'bg-white text-zinc-900 shadow-2xs'
                     : 'text-zinc-600 hover:text-zinc-900'
                 }`}
-                title="Komparasi Beban Semua 5 Staff"
+                title={`Komparasi Beban Semua ${staffData.length} Staff`}
               >
                 <Layers className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Komparasi 5 Tim</span>
+                <span>Komparasi {staffData.length} Tim</span>
               </button>
             </div>
           </div>

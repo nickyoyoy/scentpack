@@ -23,13 +23,41 @@ export const COURIERS_LIST: CourierMeta[] = [
   { id: 'lainnya', name: 'Lainnya', category: 'Lain-lain', color: '#71717a' },
 ];
 
-export const STAFF_LIST: StaffMeta[] = [
+// Tim Staff Periode <= Oktober 2026 (4 Staff Inti + 1 Leader Backup)
+export const STAFF_LIST_OCT_2026: StaffMeta[] = [
   { id: 'dina', name: 'Dina', role: 'Staff Fulfillment', isLeadBackup: false, avatar: 'DN' },
   { id: 'hambali', name: 'Hambali', role: 'Team Leader / Backup', isLeadBackup: true, avatar: 'HB' },
   { id: 'jihan', name: 'Jihan', role: 'Staff Fulfillment', isLeadBackup: false, avatar: 'JH' },
   { id: 'wawan', name: 'Wawan', role: 'Staff Fulfillment', isLeadBackup: false, avatar: 'WW' },
   { id: 'windi', name: 'Windi', role: 'Staff Fulfillment', isLeadBackup: false, avatar: 'WD' },
 ];
+
+// Tim Staff Mulai November 2026 & Seterusnya (7 Staff Inti, Hambali Team Leader sekaligus Staff Inti)
+export const STAFF_LIST_NOV_2026: StaffMeta[] = [
+  { id: 'bagir', name: 'Bagir', role: 'Staff Fulfillment', isLeadBackup: false, avatar: 'BG' },
+  { id: 'dina', name: 'Dina', role: 'Staff Fulfillment', isLeadBackup: false, avatar: 'DN' },
+  { id: 'dodi', name: 'Dodi', role: 'Staff Fulfillment', isLeadBackup: false, avatar: 'DD' },
+  { id: 'hambali', name: 'Hambali', role: 'Team Leader', isLeadBackup: false, avatar: 'HB' },
+  { id: 'wawan', name: 'Wawan', role: 'Staff Fulfillment', isLeadBackup: false, avatar: 'WW' },
+  { id: 'windi', name: 'Windi', role: 'Staff Fulfillment', isLeadBackup: false, avatar: 'WD' },
+  { id: 'wirid', name: 'Wirid', role: 'Staff Fulfillment', isLeadBackup: false, avatar: 'WR' },
+];
+
+export const STAFF_LIST: StaffMeta[] = STAFF_LIST_OCT_2026;
+
+export const isNov2026OrLater = (period: { year: number; month: number }): boolean => {
+  return period.year > 2026 || (period.year === 2026 && period.month >= 11);
+};
+
+export const getStaffListForPeriod = (period: { year: number; month: number }): StaffMeta[] => {
+  return isNov2026OrLater(period) ? STAFF_LIST_NOV_2026 : STAFF_LIST_OCT_2026;
+};
+
+export const getCoreStaffIdsForPeriod = (period: { year: number; month: number }): string[] => {
+  return isNov2026OrLater(period)
+    ? ['bagir', 'dina', 'dodi', 'hambali', 'wawan', 'windi', 'wirid']
+    : ['dina', 'jihan', 'wawan', 'windi'];
+};
 
 // Helper: buat data kosong bersih (all 0) sesuai jumlah hari dalam bulan
 export const createEmptyDailyRecord = (list: { id: string }[], daysCount: number = 31): DailyRecord => {

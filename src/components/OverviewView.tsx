@@ -23,6 +23,7 @@ import {
   ReferenceLine
 } from 'recharts';
 import { ActiveTab, CourierCategory, MonthPeriod, getMonthInfo } from '../types/fulfillment';
+import { isNov2026OrLater } from '../data/initialData';
 
 export interface OverviewCourierItem {
   id: string;
@@ -35,6 +36,7 @@ export interface OverviewCourierItem {
 export interface OverviewStaffItem {
   id: string;
   name: string;
+  role?: string;
   isLeadBackup: boolean;
   avatar: string;
   total: number;
@@ -66,6 +68,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 }) => {
   const [chartMode, setChartMode] = useState<ChartMode>('area');
   const mInfo = getMonthInfo(period.month);
+  const isNovOrLater = isNov2026OrLater(period);
 
   // Metrik dasar
   const maxInTotals = dailyTotals.length > 0 ? Math.max(...dailyTotals) : 0;
@@ -500,10 +503,12 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <div>
               <h3 className="text-sm font-semibold text-zinc-900 flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-emerald-800" />
-                Kinerja Tim & Leader Backup
+                {isNovOrLater ? 'Kinerja Tim Packing (7 Staff Inti)' : 'Kinerja Tim & Leader Backup'}
               </h3>
               <p className="text-xs text-zinc-500 mt-0.5">
-                4 staff inti seimbang (~22-23%) • Hambali aktif sebagai Team Leader cadangan
+                {isNovOrLater
+                  ? '7 staff inti seimbang (~14.3% per anggota) • Hambali sebagai Team Leader & Staff Inti'
+                  : '4 staff inti seimbang (~22-23%) • Hambali aktif sebagai Team Leader cadangan'}
               </p>
             </div>
             <button
@@ -518,12 +523,13 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             {sortedStaff.map((s) => {
               const share = totalVolume > 0 ? ((s.total / totalVolume) * 100).toFixed(1) : '0.0';
               const isBackup = s.isLeadBackup;
+              const isTeamLeader = s.id === 'hambali' || (s.role || '').toLowerCase().includes('leader');
 
               return (
                 <div 
                   key={s.id} 
                   className={`p-2.5 rounded-lg border transition-all ${
-                    isBackup 
+                    isTeamLeader 
                       ? 'bg-amber-50/50 border-amber-200/70' 
                       : 'bg-zinc-50/70 border-zinc-200/70'
                   }`}
@@ -531,7 +537,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                   <div className="flex items-center justify-between text-xs mb-1.5">
                     <div className="flex items-center gap-2">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] ${
-                        isBackup 
+                        isTeamLeader 
                           ? 'bg-amber-200 text-amber-900' 
                           : 'bg-emerald-100 text-emerald-900'
                       }`}>
@@ -543,6 +549,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                           {isBackup ? (
                             <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-200/80 text-amber-900 font-medium">
                               Leader / Cadangan
+                            </span>
+                          ) : isTeamLeader ? (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-200/80 text-amber-900 font-medium">
+                              Team Leader • Staff Inti
                             </span>
                           ) : (
                             <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-200/70 text-zinc-700 font-normal">
